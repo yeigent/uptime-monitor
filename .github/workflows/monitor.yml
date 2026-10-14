@@ -38,7 +38,7 @@ jobs:
             if [ "$sig" != "[]" ] && [ "$sig" != "$last" ]; then
               msg=$(echo "$json" | jq -r '[.shows[] | select(.total>0) | "\(.label) \(.total)석"] | join("\n")')
               ps=$(echo "$json" | jq -r '[.shows[] | select(.total>0)][0].playSeq')
-              gate="nol-app://wv?url=$(enc "$GATE_PREFIX$ps&cc=Gates")"
+              gate="nol-app://wv?url=$(enc "$GATE_PREFIX$ps%26cc%3DGates")"
               page="nol-app://wv?url=$(enc "$PAGE_URL")"
               curl -fsS -o /dev/null -H "Title: $TITLE" -H "Priority: 5" -H "Tags: rotating_light" \
                 -H "Click: $gate" -H "Actions: view, Booking, $gate; view, Page, $page" \
