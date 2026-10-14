@@ -1,0 +1,49 @@
+name: monitor
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+permissions:
+  actions: write
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 358
+    steps:
+      - name: run
+        env:
+          STATUS_URL: ${{ secrets.STATUS_URL }}
+          TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TITLE: ${{ secrets.ALERT_TITLE }}
+          PAGE_URL: ${{ secrets.PAGE_URL }}
+          GATE_PREFIX: ${{ secrets.GATE_PREFIX }}
+          END_AT: ${{ secrets.END_AT }}
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          start=$(date +%s); last=""
+          enc() { jq -rn --arg u "$1" '$u|@uri'; }
+          while true; do
+            now=$(date +%s)
+            [ "$now" -gt "$(date -d "$END_AT" +%s)" ] && exit 0
+            if [ $((now - start)) -gt 20700 ]; then
+              gh workflow run monitor.yml -R "$REPO" >/dev/null 2>&1; exit 0
+            fi
+            json=$(curl -fsS --max-time 15 "$STATUS_URL" 2>/dev/null) || { sleep 30; continue; }
+            sig=$(echo "$json" | jq -c '[.shows[] | select(.total>0) | [.playSeq,.total]]' 2>/dev/null) || sig="[]"
+            if [ "$sig" != "[]" ] && [ "$sig" != "$last" ]; then
+              msg=$(echo "$json" | jq -r '[.shows[] | select(.total>0) | "\(.label) \(.total)석"] | join("\n")')
+              ps=$(echo "$json" | jq -r '[.shows[] | select(.total>0)][0].playSeq')
+              gate="nol-app://wv?url=$(enc "$GATE_PREFIX$ps&cc=Gates")"
+              page="nol-app://wv?url=$(enc "$PAGE_URL")"
+              curl -fsS -o /dev/null -H "Title: $TITLE" -H "Priority: 5" -H "Tags: rotating_light" \
+                -H "Click: $gate" -H "Actions: view, Booking, $gate; view, Page, $page" \
+                --data-binary "$msg" "https://ntfy.sh/$TOPIC" 2>/dev/null || true
+            fi
+            last="$sig"
+            sleep $((28 + RANDOM % 6))
+          done
